@@ -7,24 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bitrise-io/go-steputils/stepconf"
-	"github.com/bitrise-io/go-steputils/tools"
-	"github.com/bitrise-io/go-utils/colorstring"
-	"github.com/bitrise-io/go-utils/errorutil"
 	"github.com/bitrise-io/go-utils/log"
 	"github.com/bitrise-io/go-utils/pathutil"
-	"github.com/bitrise-io/go-utils/stringutil"
 	"github.com/bitrise-io/go-xcode/simulator"
-	"github.com/bitrise-io/go-xcode/utility"
-	"github.com/bitrise-io/go-xcode/xcodebuild"
-	"github.com/bitrise-io/go-xcode/xcpretty"
 	"github.com/bitrise-io/xcode-project/serialized"
 	"github.com/bitrise-io/xcode-project/xcodeproj"
 	"github.com/bitrise-io/xcode-project/xcscheme"
 	"github.com/bitrise-io/xcode-project/xcworkspace"
-	"github.com/bitrise-steplib/steps-xcode-archive/utils"
 	"github.com/bitrise-steplib/steps-xcode-build-for-simulator/util"
-	shellquote "github.com/kballard/go-shellquote"
 )
 
 const (
@@ -57,278 +47,41 @@ type Config struct {
 }
 
 func main() {
-	//
-	// Config
-	var cfg Config
-	if err := stepconf.Parse(&cfg); err != nil {
-		failf("Issue with input: %s", err)
-	}
+	var scheme xcscheme.Scheme
+	var schemeContainerDir string
 
-	stepconf.Print(cfg)
-	fmt.Println()
+	pth := "/Users/aronszabados/Downloads/PBX/Talabat.xcworkspace"
+	schemeName := "Talabat"
 
-	log.SetEnableDebugLog(cfg.VerboseLog)
-
-	//
-	// Determined configs
-	{
-		log.Infof("Step determined configs:")
-
-		// Detect Xcode major version
-		xcodebuildVersion, err := utility.GetXcodeVersion()
+	if xcodeproj.IsXcodeProj(pth) {
+		project, err := xcodeproj.Open(pth)
 		if err != nil {
-			failf("Failed to determin xcode version, error: %s", err)
-		}
-		log.Printf("- xcodebuildVersion: %s (%s)", xcodebuildVersion.Version, xcodebuildVersion.BuildVersion)
-
-		xcodeMajorVersion := xcodebuildVersion.MajorVersion
-		if xcodeMajorVersion < minSupportedXcodeMajorVersion {
-			failf("Invalid xcode major version (%d), should not be less then min supported: %d", xcodeMajorVersion, minSupportedXcodeMajorVersion)
+			fmt.Println(err)
 		}
 
-		// Detect xcpretty version
-		outputTool := cfg.OutputTool
-		if outputTool == "xcpretty" {
-			fmt.Println()
-			log.Infof("Checking if output tool (xcpretty) is installed")
-
-			installed, err := xcpretty.IsInstalled()
-			if err != nil {
-				log.Warnf("Failed to check if xcpretty is installed, error: %s", err)
-				log.Printf("Switching to xcodebuild for output tool")
-				outputTool = "xcodebuild"
-			} else if !installed {
-				log.Warnf(`xcpretty is not installed`)
-				fmt.Println()
-				log.Printf("Installing xcpretty")
-
-				if cmds, err := xcpretty.Install(); err != nil {
-					log.Warnf("Failed to create xcpretty install command: %s", err)
-					log.Warnf("Switching to xcodebuild for output tool")
-					outputTool = "xcodebuild"
-				} else {
-					for _, cmd := range cmds {
-						if out, err := cmd.RunAndReturnTrimmedCombinedOutput(); err != nil {
-							if errorutil.IsExitStatusError(err) {
-								log.Warnf("%s failed: %s", out)
-							} else {
-								log.Warnf("%s failed: %s", err)
-							}
-							log.Warnf("Switching to xcodebuild for output tool")
-							outputTool = "xcodebuild"
-						}
-					}
-				}
-			}
+		var ok bool
+		scheme, ok = project.Scheme(schemeName)
+		if !ok {
+			fmt.Printf("no scheme found with name: %s in project: %s", schemeName, pth)
 		}
-
-		if outputTool == "xcpretty" {
-			xcprettyVersion, err := xcpretty.Version()
-			if err != nil {
-				log.Warnf("Failed to determin xcpretty version, error: %s", err)
-				log.Printf("Switching to xcodebuild for output tool")
-				outputTool = "xcodebuild"
-			}
-			log.Printf("- xcprettyVersion: %s", xcprettyVersion.String())
-		}
-	}
-
-	// ABS out dir pth
-	absOutputDir, err := pathutil.AbsPath(cfg.OutputDir)
-	if err != nil {
-		failf("Failed to expand OutputDir (%s), error: %s", cfg.OutputDir, err)
-	}
-
-	if exist, err := pathutil.IsPathExists(absOutputDir); err != nil {
-		failf("Failed to check if OutputDir exist, error: %s", err)
-	} else if !exist {
-		if err := os.MkdirAll(absOutputDir, 0777); err != nil {
-			failf("Failed to create OutputDir (%s), error: %s", absOutputDir, err)
-		}
-	}
-
-	// Output files
-	rawXcodebuildOutputLogPath := filepath.Join(absOutputDir, "raw-xcodebuild-output.log")
-
-	//
-	// Cleanup
-	{
-		filesToCleanup := []string{
-			rawXcodebuildOutputLogPath,
-		}
-
-		for _, pth := range filesToCleanup {
-			if err := os.RemoveAll(pth); err != nil {
-				failf("Failed to remove path (%s), error: %s", pth, err)
-			}
-
-		}
-	}
-
-	//
-	// Get simulator info from the provided OS, platform and device
-	var simulatorID string
-	{
-		fmt.Println()
-		log.Infof("Simulator info")
-
-		// Simulator Destination
-		simulatorID, err = simulatorDestinationID(cfg.SimulatorOsVersion, cfg.SimulatorPlatform, cfg.SimulatorDevice)
+		schemeContainerDir = filepath.Dir(pth)
+		fmt.Println(scheme)
+		fmt.Println(schemeContainerDir)
+	} else if xcworkspace.IsWorkspace(pth) {
+		workspace, err := xcworkspace.Open(pth)
 		if err != nil {
-			failf("Failed to find simulator, error: %s", err)
-		}
-	}
-
-	//
-	// Create the app with Xcode Command Line tools
-	{
-		fmt.Println()
-		log.Infof("Running build")
-
-		var isWorkspace bool
-		if xcworkspace.IsWorkspace(cfg.ProjectPath) {
-			isWorkspace = true
-		} else if !xcodeproj.IsXcodeProj(cfg.ProjectPath) {
-			failf("Project file extension should be .xcodeproj or .xcworkspace, but got: %s", filepath.Ext(cfg.ProjectPath))
+			fmt.Println(err)
 		}
 
-		// Build for simulator command
-		xcodeBuildCmd := xcodebuild.NewCommandBuilder(cfg.ProjectPath, isWorkspace, xcodebuild.BuildAction)
-		xcodeBuildCmd.SetScheme(cfg.Scheme)
-		xcodeBuildCmd.SetConfiguration(cfg.Configuration)
-
-		// Disable the code signing for simulator build
-		xcodeBuildCmd.SetDisableCodesign(true)
-
-		// Set simulator destination and disable code signing for the build
-		xcodeBuildCmd.SetDestination("id=" + simulatorID)
-
-		// Clean build
-		if cfg.IsCleanBuild {
-			xcodeBuildCmd.SetCustomBuildAction("clean")
-		}
-
-		// XcodeBuild Options
-		if cfg.XcodebuildOptions != "" {
-			options, err := shellquote.Split(cfg.XcodebuildOptions)
-			if err != nil {
-				failf("Failed to shell split XcodebuildOptions (%s), error: %s", cfg.XcodebuildOptions)
-			}
-			xcodeBuildCmd.SetCustomOptions(options)
-		}
-
-		// Disabe indexing while building
-		xcodeBuildCmd.SetDisableIndexWhileBuilding(cfg.DisableIndexWhileBuilding)
-
-		// Output tool
-		{
-			if cfg.OutputTool == "xcpretty" {
-				xcprettyCmd := xcpretty.New(xcodeBuildCmd)
-
-				util.LogWithTimestamp(colorstring.Green, "$ %s", xcprettyCmd.PrintableCmd())
-				fmt.Println()
-
-				if rawXcodebuildOut, err := xcprettyCmd.Run(); err != nil {
-					log.Errorf("\nLast lines of the Xcode's build log:")
-					fmt.Println(stringutil.LastNLines(rawXcodebuildOut, 10))
-
-					if err := utils.ExportOutputFileContent(rawXcodebuildOut, rawXcodebuildOutputLogPath, bitriseXcodeRawResultTextEnvKey); err != nil {
-						log.Warnf("Failed to export %s, error: %s", bitriseXcodeRawResultTextEnvKey, err)
-					} else {
-						log.Warnf(`You can find the last couple of lines of Xcode's build log above, but the full log is also available in the raw-xcodebuild-output.log
-	The log file is stored in $BITRISE_DEPLOY_DIR, and its full path is available in the $BITRISE_XCODE_RAW_RESULT_TEXT_PATH environment variable
-	(value: %s)`, rawXcodebuildOutputLogPath)
-					}
-
-					failf("Build failed, error: %s", err)
-				}
-			} else {
-				util.LogWithTimestamp(colorstring.Green, "$ %s", xcodeBuildCmd.PrintableCmd())
-				fmt.Println()
-
-				buildRootCmd := xcodeBuildCmd.Command()
-				buildRootCmd.SetStdout(os.Stdout)
-				buildRootCmd.SetStderr(os.Stderr)
-
-				if err := buildRootCmd.Run(); err != nil {
-					failf("Build failed, error: %s", err)
-				}
-			}
-		}
-	}
-
-	//
-	// Export artifacts
-	var exportedArtifacts []string
-	{
-		fmt.Println()
-		log.Infof("Copy artifacts from Derived Data to %s", absOutputDir)
-
-		proj, _, err := findBuiltProject(cfg.ProjectPath, cfg.Scheme, cfg.Configuration)
+		var containerProject string
+		scheme, containerProject, err = workspace.Scheme(schemeName)
 		if err != nil {
-			failf("Failed to open xcproj - (%s), error:", cfg.ProjectPath, err)
+			fmt.Printf("no scheme found with name: %s in workspace: %s, error: %s", schemeName, pth, err)
 		}
-
-		customOptions, err := shellquote.Split(cfg.XcodebuildOptions)
-		if err != nil {
-			failf("Failed to shell split XcodebuildOptions (%s), error: %s", cfg.XcodebuildOptions)
-		}
-
-		// Get the simulator name
-		{
-			simulatorName := iOSSimName
-			if cfg.SimulatorPlatform == "tvOS" {
-				simulatorName = tvOSSimName
-			}
-
-			customOptions = append(customOptions, "-sdk")
-			customOptions = append(customOptions, simulatorName)
-		}
-
-		schemeBuildDir, err := buildTargetDirForScheme(proj, cfg.ProjectPath, cfg.Scheme, cfg.Configuration, customOptions...)
-		if err != nil {
-			failf("Failed to get scheme (%s) build target dir, error: %s", err)
-		}
-
-		log.Debugf("Scheme build dir: %s", schemeBuildDir)
-
-		// Export the artifact from the build dir to the output_dir
-		if exportedArtifacts, err = exportArtifacts(proj, cfg.Scheme, schemeBuildDir, cfg.Configuration, cfg.SimulatorPlatform, absOutputDir); err != nil {
-			failf("Failed to export the artifacts, error: %s", err)
-		}
-	}
-
-	//
-	// Export output
-	fmt.Println()
-	log.Infof("Exporting outputs")
-	if len(exportedArtifacts) == 0 {
-		log.Warnf("No exportable artifact have found.")
+		schemeContainerDir = filepath.Dir(containerProject)
 	} else {
-		mainTargetAppPath, pathMap, err := exportOutput(exportedArtifacts)
-		if err != nil {
-			failf("Failed to export outputs (BITRISE_APP_DIR_PATH & BITRISE_APP_DIR_PATH_LIST), error: %s", err)
-		}
-
-		log.Donef("BITRISE_APP_DIR_PATH -> %s", mainTargetAppPath)
-		log.Donef("BITRISE_APP_DIR_PATH_LIST -> %s", pathMap)
-
-		fmt.Println()
-		log.Donef("You can find the exported artifacts in: %s", absOutputDir)
+		fmt.Println("unknown project extension: %s", filepath.Ext(pth))
 	}
-}
-
-func exportOutput(artifacts []string) (string, string, error) {
-	if err := tools.ExportEnvironmentWithEnvman("BITRISE_APP_DIR_PATH", artifacts[0]); err != nil {
-		return "", "", err
-	}
-
-	pathMap := strings.Join(artifacts, "|")
-	pathMap = strings.Trim(pathMap, "|")
-	if err := tools.ExportEnvironmentWithEnvman("BITRISE_APP_DIR_PATH_LIST", pathMap); err != nil {
-		return "", "", err
-	}
-	return artifacts[0], pathMap, nil
 }
 
 // findBuiltProject returns the Xcode project which will be built for the provided scheme
