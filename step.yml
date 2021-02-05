@@ -189,8 +189,8 @@ outputs:
     opts:
       title: The generated (and copied) app directory
   - BITRISE_DSYM_DIR_PATH:
-      opts:
-        title: The generated (and copied) dsym directory
+    opts:
+      title: The generated (and copied) dsym directory
   - BITRISE_APP_DIR_PATH_LIST:
     opts:
       title: List of the generated app paths
