@@ -40,6 +40,7 @@ workflows:
     - SIMULATOR_OS_VERSION: "latest"
     - OUTPUT_DIR: $BITRISE_DEPLOY_DIR
     - BITRISE_APP_DIR_PATH_EXPECTED: $BITRISE_DEPLOY_DIR/ios-simple-objc.app
+    - BITRISE_DSYM_DIR_PATH_EXPECTED: $BITRISE_DEPLOY_DIR/dSYMs
     - BITRISE_APP_DIR_PATH_LIST_EXPECTED: $BITRISE_DEPLOY_DIR/ios-simple-objc.app
     after_run:
     - _common
@@ -55,6 +56,7 @@ workflows:
     - OUTPUT_TOOL: xcpretty
     - OUTPUT_DIR: $BITRISE_DEPLOY_DIR
     - BITRISE_APP_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/code-sign-test.app"
+    - BITRISE_DSYM_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/dSYMs"
     - BITRISE_APP_DIR_PATH_LIST_EXPECTED: "$BITRISE_DEPLOY_DIR/code-sign-test.app|$BITRISE_DEPLOY_DIR/watchkit-app.app"
     after_run:
     - _common
@@ -70,6 +72,7 @@ workflows:
     - OUTPUT_TOOL: xcpretty
     - OUTPUT_DIR: $BITRISE_DEPLOY_DIR
     - BITRISE_APP_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/sample-apps-ios-workspace-swift.app"
+    - BITRISE_DSYM_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/dSYMs"
     - BITRISE_APP_DIR_PATH_LIST_EXPECTED: "$BITRISE_DEPLOY_DIR/sample-apps-ios-workspace-swift.app"
     after_run:
     - _common
@@ -85,6 +88,7 @@ workflows:
     - OUTPUT_TOOL: xcodebuild
     - OUTPUT_DIR: $BITRISE_DEPLOY_DIR
     - BITRISE_APP_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/sample-apps-ios-workspace-swift.app"
+    - BITRISE_DSYM_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/dSYMs"
     - BITRISE_APP_DIR_PATH_LIST_EXPECTED: "$BITRISE_DEPLOY_DIR/sample-apps-ios-workspace-swift.app|$BITRISE_DEPLOY_DIR/bitfall.sample-apps-ios-workspace-swift-watch.app"
     after_run:
     - _common
@@ -100,6 +104,7 @@ workflows:
     - OUTPUT_TOOL: xcpretty
     - OUTPUT_DIR: $BITRISE_DEPLOY_DIR
     - BITRISE_APP_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/sample-apps-ios-workspace-swift.app"
+    - BITRISE_DSYM_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/dSYMs"
     - BITRISE_APP_DIR_PATH_LIST_EXPECTED: "$BITRISE_DEPLOY_DIR/sample-apps-ios-workspace-swift.app|$BITRISE_DEPLOY_DIR/bitfall.sample-apps-ios-workspace-swift-watch.app"
     after_run:
     - _common
@@ -115,6 +120,7 @@ workflows:
     - OUTPUT_TOOL: xcpretty
     - OUTPUT_DIR: $BITRISE_DEPLOY_DIR
     - BITRISE_APP_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/SampleProjectReactNative.app"
+    - BITRISE_DSYM_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/dSYMs"
     - BITRISE_APP_DIR_PATH_LIST_EXPECTED: "$BITRISE_DEPLOY_DIR/SampleProjectReactNative.app"
     after_run:
     - _common
@@ -130,6 +136,7 @@ workflows:
     - OUTPUT_TOOL: xcpretty
     - OUTPUT_DIR: $BITRISE_DEPLOY_DIR
     - BITRISE_APP_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/SampleProjectReactNative.app"
+    - BITRISE_DSYM_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/dSYMs"
     - BITRISE_APP_DIR_PATH_LIST_EXPECTED: "$BITRISE_DEPLOY_DIR/SampleProjectReactNative.app"
     after_run:
     - _common
@@ -145,6 +152,7 @@ workflows:
     - OUTPUT_TOOL: xcpretty
     - OUTPUT_DIR: $BITRISE_DEPLOY_DIR
     - BITRISE_APP_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/SampleProjectReactNative.app"
+    - BITRISE_DSYM_DIR_PATH_EXPECTED: "$BITRISE_DEPLOY_DIR/dSYMs"
     - BITRISE_APP_DIR_PATH_LIST_EXPECTED: "$BITRISE_DEPLOY_DIR/SampleProjectReactNative.app"
     after_run:
     - _common
@@ -160,6 +168,7 @@ workflows:
     - SIMULATOR_OS_VERSION: "latest"
     - OUTPUT_DIR: $BITRISE_DEPLOY_DIR
     - BITRISE_APP_DIR_PATH_EXPECTED: $BITRISE_DEPLOY_DIR/sample-swiftpm.app
+    - BITRISE_DSYM_DIR_PATH_EXPECTED: $BITRISE_DEPLOY_DIR/dSYMs
     - BITRISE_APP_DIR_PATH_LIST_EXPECTED: $BITRISE_DEPLOY_DIR/sample-swiftpm.app
     after_run:
     - _common
@@ -248,6 +257,13 @@ workflows:
               exit 1
             else
               echo "BITRISE_APP_DIR_PATH: $BITRISE_APP_DIR_PATH"
+            fi
+
+            if [[ "$BITRISE_DSYM_DIR_PATH_EXPECTED" != "$BITRISE_DSYM_DIR_PATH" ]] ; then
+              echo "BITRISE_DSYM_DIR_PATH (\"$BITRISE_DSYM_DIR_PATH\") should be: \"$BITRISE_DSYM_DIR_PATH_EXPECTED\""
+              exit 1
+            else
+              echo "BITRISE_DSYM_DIR_PATH: $BITRISE_DSYM_DIR_PATH"
             fi
 
             if [[ "$BITRISE_APP_DIR_PATH_LIST_EXPECTED" != "$BITRISE_APP_DIR_PATH_LIST" ]] ; then 
