@@ -496,7 +496,7 @@ func wrapperNameForScheme(proj xcodeproj.XcodeProj, projectPath, scheme, configu
 	return wrapperName, nil
 }
 
-// exportArtifacts exports the main target and it's .app dependencies.
+// exportArtifacts exports the main target and it's .app dependencies and .dsyms if any.
 func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir string, configuration, simulatorPlatform, deployDir string, customOptions ...string) ([]string, error) {
 	var exportedArtifacts []string
 	splitSchemeDir := strings.Split(schemeBuildDir, "Build/")
@@ -524,8 +524,8 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
 		log.Donef(target.Name + "...")
 
 		// Is the target an application? -> If not skip the export
-		if !strings.HasSuffix(target.ProductReference.Path, ".app") {
-			log.Printf("Target (%s) is not an .app - SKIP", target.Name)
+		if !strings.HasSuffix(target.ProductReference.Path, ".app") && !strings.HasSuffix(target.ProductReference.Path, ".appex") {
+			log.Printf("Target (%s) is not an .app or .appex - SKIP", target.Name)
 			continue
 		}
 
@@ -600,11 +600,13 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
 			// .xcodeproj's directory + current target's build dir (If the project settings uses a custom TARGET_BUILD_DIR env & the project is not in the root dir)
 			sourceDirs := []string{filepath.Join(schemeDir, targetDir), schemeDir, filepath.Join(path.Dir(proj.Path), schemeDir)}
 			destination := filepath.Join(deployDir, target.ProductReference.Path)
+			dsymDestination := filepath.Join(deployDir, target.ProductReference.Path + ".dSYM")
 
 			// Search for the generated build artifact
 			var exported bool
 			for _, sourceDir := range sourceDirs {
 				source := filepath.Join(sourceDir, target.ProductReference.Path)
+				dsym := filepath.Join(sourceDir, target.ProductReference.Path + ".dSYM")
 				log.Debugf("searching for the generated app in %s", source)
 
 				if exists, err := pathutil.IsPathExists(source); err != nil {
@@ -619,6 +621,7 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
 						failf("Failed to get scheme (%s) build target dir, error: %s", err)
 					}
 					source = filepath.Join(sourceDir, wrapperName)
+					dsym = filepath.Join(sourceDir, wrapperName + ".dSYM")
 
 					if exists, err := pathutil.IsPathExists(source); err != nil {
 						log.Debugf("failed to check if the path exists: (%s), error: ", source, err)
@@ -629,24 +632,39 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
 					}
 				}
 
-				// Copy the build artifact
-				cmd := util.CopyDir(source, destination)
-				cmd.SetStdout(os.Stdout)
-				cmd.SetStderr(os.Stderr)
-				log.Debugf("$ " + cmd.PrintableCommandArgs())
-				if err := cmd.Run(); err != nil {
-					log.Debugf("failed to copy the generated app from (%s) to the Deploy dir\n", source)
-					continue
+				// Copy if the build artifact is .app only
+				if strings.HasSuffix(target.ProductReference.Path, ".app") {
+                	cmd := util.CopyDir(source, destination)
+                    cmd.SetStdout(os.Stdout)
+                    cmd.SetStderr(os.Stderr)
+                    log.Debugf("$ " + cmd.PrintableCommandArgs())
+                    if err := cmd.Run(); err != nil {
+                    	log.Debugf("failed to copy the generated app from (%s) to the Deploy dir\n", source)
+                    	continue
+                    }
+
+                    exportedArtifacts = append(exportedArtifacts, destination)
+                }
+
+                // Copy the dsym if exist for any .app or .appex
+                if exists, err := pathutil.IsPathExists(dsym); err != nil {
+                    cmd := util.CopyDir(dsym, dsymDestination)
+                    cmd.SetStdout(os.Stdout)
+                    cmd.SetStderr(os.Stderr)
+                    log.Debugf("$ " + cmd.PrintableCommandArgs())
+                    if err := cmd.Run(); err != nil {
+                    	log.Debugf("failed to copy the generated dsym from (%s) to the Deploy dir\n", dsym)
+                    	continue
+                    }
+
+                    exportedArtifacts = append(exportedArtifacts, dsymDestination)
 				}
 
 				exported = true
 				break
 			}
 
-			if exported {
-				exportedArtifacts = append(exportedArtifacts, destination)
-				log.Debugf("Success\n")
-			} else {
+			if !exported {
 				return nil, fmt.Errorf("failed to copy the generated app to the Deploy dir")
 			}
 		}
