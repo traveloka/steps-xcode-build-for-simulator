@@ -318,12 +318,13 @@ The log file is stored in $BITRISE_DEPLOY_DIR, and its full path is available in
 	if len(exportedArtifacts) == 0 {
 		log.Warnf("No exportable artifact have found.")
 	} else {
-		mainTargetAppPath, pathMap, err := exportOutput(exportedArtifacts)
+		mainTargetAppPath, dsymPath, pathMap, err := exportOutput(exportedArtifacts)
 		if err != nil {
 			failf("Failed to export outputs (BITRISE_APP_DIR_PATH & BITRISE_APP_DIR_PATH_LIST), error: %s", err)
 		}
 
 		log.Donef("BITRISE_APP_DIR_PATH -> %s", mainTargetAppPath)
+		log.Donef("BITRISE_DSYM_DIR_PATH -> %s", dsymPath)
 		log.Donef("BITRISE_APP_DIR_PATH_LIST -> %s", pathMap)
 
 		fmt.Println()
@@ -338,17 +339,35 @@ The log file is stored in $BITRISE_DEPLOY_DIR, and its full path is available in
 	}
 }
 
-func exportOutput(artifacts []string) (string, string, error) {
-	if err := tools.ExportEnvironmentWithEnvman("BITRISE_APP_DIR_PATH", artifacts[0]); err != nil {
-		return "", "", err
+func exportOutput(artifacts []string) (string, string, string, error) {
+    var mainTargetApp string
+    var dsymPath string
+    for _, artifact := range artifacts {
+        if strings.HasSuffix(artifact, ".app") {
+            mainTargetApp = artifact
+        } else if strings.HasSuffix(artifact, ".dSYM") {
+            dsymPath = artifact
+        }
+
+        if mainTargetApp != "" && dsymPath != "" {
+            break;
+        }
+    }
+
+	if err := tools.ExportEnvironmentWithEnvman("BITRISE_APP_DIR_PATH", mainTargetApp); err != nil {
+		return "", "", "", err
 	}
+
+	if err := tools.ExportEnvironmentWithEnvman("BITRISE_DSYM_DIR_PATH", dsymPath); err != nil {
+    	return "", "", "", err
+    }
 
 	pathMap := strings.Join(artifacts, "|")
 	pathMap = strings.Trim(pathMap, "|")
 	if err := tools.ExportEnvironmentWithEnvman("BITRISE_APP_DIR_PATH_LIST", pathMap); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return artifacts[0], pathMap, nil
+	return mainTargetApp, dsymPath, pathMap, nil
 }
 
 func readScheme(pth, schemeName string) (*xcscheme.Scheme, string, error) {
@@ -600,7 +619,7 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
 			// .xcodeproj's directory + current target's build dir (If the project settings uses a custom TARGET_BUILD_DIR env & the project is not in the root dir)
 			sourceDirs := []string{filepath.Join(schemeDir, targetDir), schemeDir, filepath.Join(path.Dir(proj.Path), schemeDir)}
 			destination := filepath.Join(deployDir, target.ProductReference.Path)
-			dsymDestination := filepath.Join(deployDir, target.ProductReference.Path + ".dSYM")
+			dsymDestination := filepath.Join(deployDir, "dSYMs/" + target.ProductReference.Path + ".dSYM")
 
 			// Search for the generated build artifact
 			var exported bool
@@ -648,16 +667,18 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
 
                 // Copy the dsym if exist for any .app or .appex
                 if exists, err := pathutil.IsPathExists(dsym); err != nil {
-                    cmd := util.CopyDir(dsym, dsymDestination)
-                    cmd.SetStdout(os.Stdout)
-                    cmd.SetStderr(os.Stderr)
-                    log.Debugf("$ " + cmd.PrintableCommandArgs())
-                    if err := cmd.Run(); err != nil {
-                    	log.Debugf("failed to copy the generated dsym from (%s) to the Deploy dir\n", dsym)
-                    	continue
-                    }
+                    if exists {
+                        cmd := util.CopyDir(dsym, dsymDestination)
+                        cmd.SetStdout(os.Stdout)
+                        cmd.SetStderr(os.Stderr)
+                        log.Debugf("$ " + cmd.PrintableCommandArgs())
+                        if err := cmd.Run(); err != nil {
+                        	log.Debugf("failed to copy the generated dsym from (%s) to the Deploy dir\n", dsym)
+                        	continue
+                        }
 
-                    exportedArtifacts = append(exportedArtifacts, dsymDestination)
+                        exportedArtifacts = append(exportedArtifacts, dsymDestination)
+                    }
 				}
 
 				exported = true
