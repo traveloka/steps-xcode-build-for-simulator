@@ -539,6 +539,15 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
 
 	targets := append([]xcodeproj.Target{mainTarget}, mainTarget.DependentTargets()...)
 
+	// Make dsym dir
+    mkdirCmd := util.MakeDir(filepath.Join(deployDir, "dSYMs"))
+    mkdirCmd.SetStdout(os.Stdout)
+    mkdirCmd.SetStderr(os.Stderr)
+    log.Debugf("$ " + mkdirCmd.PrintableCommandArgs())
+    if err := mkdirCmd.Run(); err != nil {
+        return nil, fmt.Errorf("failed to make dSYMs dir path, error: %s", err)
+    }
+
 	for _, target := range targets {
 		log.Donef(target.Name + "...")
 
@@ -627,6 +636,7 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
 				source := filepath.Join(sourceDir, target.ProductReference.Path)
 				dsym := filepath.Join(sourceDir, target.ProductReference.Path + ".dSYM")
 				log.Debugf("searching for the generated app in %s", source)
+				log.Debugf("searching for the generated dsym in %s", dsym)
 
 				if exists, err := pathutil.IsPathExists(source); err != nil {
 					log.Debugf("failed to check if the path exists: (%s), error: ", source, err)
@@ -678,7 +688,12 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
                         }
 
                         exportedArtifacts = append(exportedArtifacts, dsymDestination)
+                    } else {
+                        log.Debugf("dsym not exist in %s", dsym)
                     }
+				} else {
+				    log.Debugf("failed to copy the generated dsym from (%s) to the Deploy dir\n", dsym)
+				    log.Debugf("Reason: %s \n", err)
 				}
 
 				exported = true

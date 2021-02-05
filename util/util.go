@@ -28,3 +28,9 @@ func CopyDir(source string, destination string) *command.Model {
 
 	return copyCmd
 }
+
+func MakeDir(dir string) *command.Model {
+    mkdirCmd := command.New("mkdir", "-p", dir)
+
+    return mkdirCmd
+}
