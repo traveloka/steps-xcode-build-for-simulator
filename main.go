@@ -318,7 +318,7 @@ The log file is stored in $BITRISE_DEPLOY_DIR, and its full path is available in
 	if len(exportedArtifacts) == 0 {
 		log.Warnf("No exportable artifact have found.")
 	} else {
-		mainTargetAppPath, dsymPath, pathMap, err := exportOutput(exportedArtifacts)
+		mainTargetAppPath, dsymPath, pathMap, err := exportOutput(exportedArtifacts, absOutputDir)
 		if err != nil {
 			failf("Failed to export outputs (BITRISE_APP_DIR_PATH & BITRISE_APP_DIR_PATH_LIST), error: %s", err)
 		}
@@ -339,35 +339,29 @@ The log file is stored in $BITRISE_DEPLOY_DIR, and its full path is available in
 	}
 }
 
-func exportOutput(artifacts []string) (string, string, string, error) {
-    var mainTargetApp string
-    var dsymPath string
+func exportOutput(artifacts []string, deployDir string) (string, string, string, error) {
+    var appPathList []string
     for _, artifact := range artifacts {
         if strings.HasSuffix(artifact, ".app") {
-            mainTargetApp = artifact
-        } else if strings.HasSuffix(artifact, ".dSYM") {
-            dsymPath = artifact
-        }
-
-        if mainTargetApp != "" && dsymPath != "" {
-            break;
+            appPathList = append(appPathList, artifact)
         }
     }
 
-	if err := tools.ExportEnvironmentWithEnvman("BITRISE_APP_DIR_PATH", mainTargetApp); err != nil {
+	if err := tools.ExportEnvironmentWithEnvman("BITRISE_APP_DIR_PATH", artifacts[0]); err != nil {
 		return "", "", "", err
 	}
 
+    dsymPath := filepath.Join(deployDir, "dSYMs")
 	if err := tools.ExportEnvironmentWithEnvman("BITRISE_DSYM_DIR_PATH", dsymPath); err != nil {
     	return "", "", "", err
     }
 
-	pathMap := strings.Join(artifacts, "|")
+	pathMap := strings.Join(appPathList, "|")
 	pathMap = strings.Trim(pathMap, "|")
 	if err := tools.ExportEnvironmentWithEnvman("BITRISE_APP_DIR_PATH_LIST", pathMap); err != nil {
 		return "", "", "", err
 	}
-	return mainTargetApp, dsymPath, pathMap, nil
+	return artifacts[0], dsymPath, pathMap, nil
 }
 
 func readScheme(pth, schemeName string) (*xcscheme.Scheme, string, error) {
@@ -676,8 +670,10 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
                 }
 
                 // Copy the dsym if exist for any .app or .appex
-                if exists, err := pathutil.IsPathExists(dsym); err != nil {
+                if exists, err := pathutil.IsPathExists(dsym); err == nil {
                     if exists {
+                        log.Debugf("Copying dsym from (%s) to %s\n", dsym, dsymDestination)
+
                         cmd := util.CopyDir(dsym, dsymDestination)
                         cmd.SetStdout(os.Stdout)
                         cmd.SetStderr(os.Stderr)
@@ -689,11 +685,8 @@ func exportArtifacts(proj xcodeproj.XcodeProj, scheme string, schemeBuildDir str
 
                         exportedArtifacts = append(exportedArtifacts, dsymDestination)
                     } else {
-                        log.Debugf("dsym not exist in %s", dsym)
+                        log.Debugf("dsym not found on (%s)\n", dsym)
                     }
-				} else {
-				    log.Debugf("failed to copy the generated dsym from (%s) to the Deploy dir\n", dsym)
-				    log.Debugf("Reason: %s \n", err)
 				}
 
 				exported = true
